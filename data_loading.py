@@ -57,12 +57,10 @@ def get_riot_match_ids(puuid_list, api_key, max_games=20):
     return match_ids
 
 
-def download_replay(gameId):
-    port = "REPLACE_THIS_WITH --app-port"
-    token = "REPLACE THIS WITH --remoting-auth-token"
+def download_replay(gameId, port, token):
     tok = base64.b64encode(f"riot:{token}".encode("utf-8"))
     tok = str(tok, encoding="utf-8")
-    url = f"https://127.0.0.1:{port}/lol-replays/v1/rofls/{gameId}/download/graceful"
+    url = f"https://127.0.0.1:{port}/lol-replays/v1/rofls/{gameId}/download"
     print('tok:', tok, gameId)
     req = requests.post(
         url=url,
@@ -87,8 +85,16 @@ if __name__ == '__main__':
 
     api_key = keys['riot_api_key']
 
-    summoner_list = ['st0w0pid'] # replace with list for testing
+    summoner_list = [] # replace with list for testing
     puuid_list = get_riot_puuid(summoner_list, api_key)
     match_id_list = get_riot_match_ids(puuid_list, api_key, max_games=20)
 
     print(match_id_list)
+
+    port = keys['app_port']
+    token = keys['remoting_auth_token']
+
+    test_game_id = match_id_list[1].split('_')[1]
+    download_replay(test_game_id, port, token)
+
+
