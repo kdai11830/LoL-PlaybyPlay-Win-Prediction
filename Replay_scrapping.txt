@@ -26,4 +26,6 @@ def get_metadata(filename):
         #champs = [s["SKIN"] for s in stats_json]
 
         return replay_metadata, stats_json
-get_metadata('NA1-4348359538.rofl')
+f = get_metadata('NA1-4348359538.rofl')
+data = pd.read_json((dict(f[0]))['statsJson'])
+data
