@@ -1,0 +1,31 @@
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
+import os
+def get_metadata(filename):
+    with open(filename, "rb") as f:
+        # Magic
+        magic = str(f.read(4), encoding="utf-8")
+
+        # Length fields
+        lengths_buffer = []
+        f.seek(262)
+        length_field_buffer = f.read(26)
+        metadata_offset = length_field_buffer[6:10]
+        metadata_length = length_field_buffer[10:14]
+
+        metadata_offset = int.from_bytes(metadata_offset, byteorder='little')
+        metadata_length = int.from_bytes(metadata_length, byteorder='little')
+
+        # Metadata
+        f.seek(metadata_offset)
+        replay_metadata = f.read(metadata_length)
+        replay_metadata = json.loads(str(replay_metadata, encoding="utf-8"))
+        stats_json = json.loads(replay_metadata["statsJson"])
+
+        #champs = [s["SKIN"] for s in stats_json]
+
+        return replay_metadata, stats_json
+f = get_metadata('NA1-4348359538.rofl')
+data = pd.read_json((dict(f[0]))['statsJson'])
+data
