@@ -1,10 +1,11 @@
-import numpy
-import pandas
+import numpy as np
+import pandas as pd
 import json
 import requests
 import time
 import base64
 import os
+from collections import defaultdict
 
 # get current list of challenger summoner names
 # assume we only want ranked solo 5x5 and not ranked flex
@@ -114,15 +115,38 @@ def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
 
     return match_ids
 
-# helper function to put timeline json into dataframe format
+
+# helper functions to put timeline json into dataframe format
+def round_timestamp(x, base=60000):
+    return base * round(x/base)
+
 def decode_timeline_json(timeline_json):
-    match_id = timeline_json['matchId']
-    participants_ref = timeline_json['participants']
-    for frame in timeline_json['frames']:
+    events_reframe = defaultdict(list)
+    participants_reframe = pd.DataFrame()
+    frame_interval = timeline_json['info']['frameInterval']
+    for frame in timeline_json['info']['frames']:
+        # timestamp = round_timestamp(frame['timestamp'], base=frame_interval)
+        timestamp = round_timestamp(frame['timestamp'], base=10000)
+        for event in frame['events']:
+            event['sampleTimestamp'] = timestamp
+            events_reframe[event['type']].append(event)
+        for participant_id, participant_frame in frame['participantFrames'].items():
+            tmp = pd.json_normalize(participant_frame, sep='_')
+            tmp['participantId'] = participant_id
+            tmp['sampleTimestamp'] = timestamp
+            participants_reframe = pd.concat([participants_reframe, tmp], ignore_index=True)
+    participants_reframe = participants_reframe.set_index(['participantId','sampleTimestamp']).reset_index()
+
+    events_reframe_dfs = {}
+    for event, event_dict in events_reframe.items():
+        events_reframe_dfs[event] = pd.DataFrame.from_dict(event_dict)
+
+    return participants_reframe, events_reframe_dfs
+
 
 
 # get jsons from match timelines api
-def get_match_timelines(match_id_list, api_key):
+def get_match_timeline_data(match_id_list, api_key):
     timeline_list = []
     headers = {
         "Accept-Language": "en-US,en;q=0.9",
@@ -132,12 +156,13 @@ def get_match_timelines(match_id_list, api_key):
     }
 
     for match_id in match_id_list:
-        url = f'https://americas.api.riotgames.com/lol/match/v5/matches/{}/timeline'
+        url = f'https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline'
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             res = json.loads(response.content.decode('utf-8'))
-            
+            participants_reframe, events_reframe_dfs = decode_timeline_json(res)
+            return participants_reframe, events_reframe_dfs
         except:
             raise
 
@@ -182,8 +207,10 @@ if __name__ == '__main__':
     print(len(summoner_list))
     print(len(match_id_list))
 
-    port = keys['app_port']
-    token = keys['remoting_auth_token']
+    participants_reframe, events_reframe_dfs = get_match_timeline_data(match_id_list, api_key)
+
+    # port = keys['app_port']
+    # token = keys['remoting_auth_token']
 
     # test_game_id = match_id_list[0].split('_')[1]
     # download_replay(test_game_id, port, token)
