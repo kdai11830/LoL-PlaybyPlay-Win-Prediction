@@ -153,13 +153,16 @@ def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
 def round_timestamp(x, base=60000):
     return base * round(x/base)
 
-def decode_timeline_json(timeline_json):
+def decode_timeline_json(timeline_json,frame_interval=None):
     events_reframe = defaultdict(list)
     participants_reframe = pd.DataFrame()
-    frame_interval = timeline_json['info']['frameInterval']
+
+    match_id = timeline_json['metadata']['matchId']
+    if frame_interval is None:
+        frame_interval = timeline_json['info']['frameInterval']
+
     for frame in timeline_json['info']['frames']:
-        # timestamp = round_timestamp(frame['timestamp'], base=frame_interval)
-        timestamp = round_timestamp(frame['timestamp'], base=10000)
+        timestamp = round_timestamp(frame['timestamp'], base=frame_interval)
         for event in frame['events']:
             event['sampleTimestamp'] = timestamp
             events_reframe[event['type']].append(event)
@@ -168,19 +171,29 @@ def decode_timeline_json(timeline_json):
             tmp['participantId'] = participant_id
             tmp['sampleTimestamp'] = timestamp
             participants_reframe = pd.concat([participants_reframe, tmp], ignore_index=True)
-    participants_reframe = participants_reframe.set_index(['participantId','sampleTimestamp']).reset_index()
+    
+    participants_reframe['matchId'] = match_id
+    participants_reframe = participants_reframe.set_index(['matchId','participantId','sampleTimestamp']).reset_index()
 
     events_reframe_dfs = {}
     for event, event_dict in events_reframe.items():
         events_reframe_dfs[event] = pd.DataFrame.from_dict(event_dict)
+        events_reframe_dfs[event]['matchId'] = match_id
+        events_reframe_dfs[event] = events_reframe_dfs[event].set_index(['matchId','sampleTimestamp','type']).reset_index()
 
-    return participants_reframe, events_reframe_dfs
+    participant_mapping_df = pd.DataFrame.from_dict(timeline_json['info']['participants'])
+    participant_mapping_df['matchId'] = match_id
+    participant_mapping_df = participant_mapping_df.set_index('matchId').reset_index()
+
+    return participants_reframe, events_reframe_dfs, participant_mapping_df
 
 
 
 # get jsons from match timelines api
 def get_match_timeline_data(match_id_list, api_key):
-    timeline_list = []
+    participants_reframe_all = pd.DataFrame()
+    event_reframe_all = defaultdict(pd.DataFrame)
+    participant_mapping_all = pd.DataFrame()
     headers = {
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -188,16 +201,30 @@ def get_match_timeline_data(match_id_list, api_key):
         "X-Riot-Token": api_key
     }
 
-    for match_id in match_id_list:
+    for i,match_id in enumerate(match_id_list):
+        if i % 20 == 0:
+            print(f'match {i}/{len(match_id_list)}')
         url = f'https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline'
         try:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             res = json.loads(response.content.decode('utf-8'))
-            participants_reframe, events_reframe_dfs = decode_timeline_json(res)
-            return participants_reframe, events_reframe_dfs
+            participants_reframe, events_reframe_dfs, participant_mapping_df = decode_timeline_json(res,frame_interval=10000)
+            participants_reframe_all = pd.concat([participants_reframe_all, participants_reframe])   
+            for event_type, event_df in events_reframe_dfs.items():
+                event_reframe_all[event_type] = pd.concat([event_reframe_all[event_type], event_df])
+            participant_mapping_all = pd.concat([participant_mapping_all,participant_mapping_df])
+            
         except:
-            raise
+            continue
+    
+    return participants_reframe_all, event_reframe_all, participant_mapping_all
+
+def write_timeline_data(participants_reframe_all, event_reframe_all, participant_mapping_all, dir):
+    participants_reframe_all.to_pickle(f'{dir}participant_stats.pkl')
+    for event in event_reframe_all:
+        event_reframe_all[event].to_pickle(f'{dir}{event.lower()}.pkl')
+    participant_mapping_all.to_pickle(f'{dir}participant_puuid_map.pkl')
 
 
 # script to download replays from client API
@@ -248,17 +275,26 @@ if __name__ == '__main__':
     # with open('summoner_puuid_list.pkl','wb') as f:
     #     pickle.dump(puuid_list, f)
 
-    with open('summoner_puuid_list.pkl','rb') as f:
-        puuid_list = pickle.load(f)
+    # with open('summoner_puuid_list.pkl','rb') as f:
+    #     puuid_list = pickle.load(f)
 
-    match_id_list = get_riot_match_ids(puuid_list, api_key, max_players=len(puuid_list), max_games=20)
-    with open('match_id_list.pkl','wb') as f:
-        pickle.dump(match_id_list, f)
+    # match_id_list = get_riot_match_ids(puuid_list, api_key, max_players=len(puuid_list), max_games=20)
+    # with open('match_id_list.pkl','wb') as f:
+    #     pickle.dump(match_id_list, f)
+
+    with open('match_id_list.pkl','rb') as f:
+        match_id_list = pickle.load(f)
 
     # print(len(summoner_list))
-    # print(len(match_id_list))
+    print(len(match_id_list))
 
-    # participants_reframe, events_reframe_dfs = get_match_timeline_data(match_id_list, api_key)
+    match_id_list = match_id_list[:5200]
+
+    
+    participants_reframe_all, event_reframe_all, participant_mapping_all = get_match_timeline_data(match_id_list, api_key)
+    # print(event_reframe_all)
+
+    write_timeline_data(participants_reframe_all, event_reframe_all, participant_mapping_all, 'data/')
 
     # port = keys['app_port']
     # token = keys['remoting_auth_token']
