@@ -146,7 +146,7 @@ def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
         # sleep to bypass request limit
         time.sleep(1.2)
 
-    return match_ids
+    return list(set(match_ids))
 
 
 # helper functions to put timeline json into dataframe format
