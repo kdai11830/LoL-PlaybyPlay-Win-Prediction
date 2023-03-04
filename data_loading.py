@@ -216,7 +216,10 @@ def get_match_timeline_data(match_id_list, api_key):
             participant_mapping_all = pd.concat([participant_mapping_all,participant_mapping_df])
             
         except:
-            continue
+            raise
+
+        # sleep to bypass request limit
+        time.sleep(1.2)
     
     return participants_reframe_all, event_reframe_all, participant_mapping_all
 
