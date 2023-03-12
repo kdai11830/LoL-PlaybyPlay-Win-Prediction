@@ -4,3 +4,12 @@ replays/
 MF_sample_data/
 compressed_sample_data/
 EUW1-5237530168.rofl.json
+match_info_tmp.json
+data/
+kd_data.zip
+data_checkpoints/
+jw_data/
+data_merged/
+data_merged.zip
+data_final/
+kd_data/

@@ -230,6 +230,43 @@ def write_timeline_data(participants_reframe_all, event_reframe_all, participant
     participant_mapping_all.to_pickle(f'{dir}participant_puuid_map.pkl')
 
 
+# get overall match data
+def get_match_data(match_id_list, api_key):
+    df_participant_info = pd.DataFrame()
+    df_team_info = pd.DataFrame()
+
+    headers = {
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "https://developer.riotgames.com",
+        "X-Riot-Token": api_key
+    }   
+
+    for i,match_id in enumerate(match_id_list):
+        if i % 20 == 0:
+            print(f'match {i}/{len(match_id_list)}')
+        url = f'https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}'
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            res = json.loads(response.content.decode('utf-8'))
+            participants = pd.concat([pd.json_normalize(x,sep='_') for x in res['info']['participants']]).fillna(0)
+            participants['matchId'] = match_id
+            df_participant_info = pd.concat([df_participant_info, participants])
+
+            teams = pd.json_normalize(res['info']['teams'], sep='_')
+            teams['bans'] = teams['bans'].apply(lambda x: pd.DataFrame(x)['championId'].values)
+            teams[[f'bans{i}' for i in range(5)]] = pd.DataFrame(teams['bans'].tolist())
+            teams = teams.drop(columns=['bans'])
+            teams['matchId'] = match_id
+            df_team_info = pd.concat([df_team_info, teams])
+        except:
+            continue
+
+        time.sleep(1.2)
+
+    return df_participant_info, df_team_info
+
 # script to download replays from client API
 # NOTE: only works if replay can be downloaded manually from inside client
 # replay will be available in replay path found in league client
@@ -291,13 +328,17 @@ if __name__ == '__main__':
     # print(len(summoner_list))
     print(len(match_id_list))
 
-    match_id_list = match_id_list[:5200]
+    # match_id_list = match_id_list[:5200]
 
     
-    participants_reframe_all, event_reframe_all, participant_mapping_all = get_match_timeline_data(match_id_list, api_key)
+    # participants_reframe_all, event_reframe_all, participant_mapping_all = get_match_timeline_data(match_id_list, api_key)
     # print(event_reframe_all)
 
-    write_timeline_data(participants_reframe_all, event_reframe_all, participant_mapping_all, 'data/')
+    # write_timeline_data(participants_reframe_all, event_reframe_all, participant_mapping_all, 'data/')
+
+    df_participant_info, df_team_info = get_match_data(match_id_list, api_key)
+    df_participant_info.to_pickle('match_participant_info.pkl')
+    df_team_info.to_pickle('match_team_info.pkl')
 
     # port = keys['app_port']
     # token = keys['remoting_auth_token']
