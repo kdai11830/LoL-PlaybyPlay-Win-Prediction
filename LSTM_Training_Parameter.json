@@ -1,0 +1,1 @@
+{"input_size": 32, "hidden_size": 256, "num_classes": 2, "learn_rate": 0.02, "batch_sizes": 500, "num_epochs": 30}
