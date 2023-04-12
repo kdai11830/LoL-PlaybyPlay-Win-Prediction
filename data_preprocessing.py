@@ -314,6 +314,34 @@ def load_wardplaced(dir, df_final_merge, df_final_merge_flat, df_match_participa
 
     return df_final_merge, df_final_merge_flat
 
+def load_summonerstats(dir, df_final_merge, df_final_merge_flat,df_match_participant_info):
+    df_summonerstats = pd.read_pickle(f'{dir}/summoner_stats.pkl')
+    df_participant_map = pd.read_pickle(f'{dir}/participant_puuid_map.pkl')
+    df_summonerstats = df_summonerstats.rename(columns={
+        'total_kills':'playerStatsKills',
+        'total_deaths':'playerStatsDeaths',
+        'num_wins':'playerStatsWins',
+        'num_matches':'playerStatsMatches',
+        'kd_ratio':'playerStatsKd',
+        'win_ratio':'playerStatsWinratio'
+    })
+
+    df_participant_map = df_participant_map.merge(df_summonerstats, how='left', on='puuid')
+    df_participant_map = df_participant_map.merge(df_match_participant_info[['matchId','teamId','participantId','teamPosition']],how='left', on=['matchId','participantId'])
+    df_participant_map['teamIdStr'] = df_participant_map['teamId'].map({100:'TEAM1', 200:'TEAM2'})
+
+    df_final_merge = df_final_merge.merge(df_summonerstats, how='left', on='puuid')
+    
+    tmp = df_participant_map.pivot_table(index=['matchId'], columns=['teamPosition','teamIdStr'], values=['playerStatsKills','playerStatsDeaths','playerStatsWins','playerStatsMatches','playerStatsKd','playerStatsWinratio'])
+    tmp = tmp.loc[:,tmp.columns[tmp.columns.get_level_values(1) != '']].fillna(0)
+    tmp.columns = ['_'.join(x) for x in tmp.columns.values]
+
+    df_final_merge_flat = df_final_merge_flat.merge(tmp, how='left', on=['matchId'])
+
+    return df_final_merge, df_final_merge_flat
+
+
+
 
 def load_pipeline(dir):
     print("loading match data...")
@@ -339,6 +367,9 @@ def load_pipeline(dir):
 
     print("loading ward placed data...")
     df_final_merge, df_final_merge_flat = load_wardplaced(dir, df_final_merge, df_final_merge_flat, df_match_participant_info)
+
+    print("loading summoner stats data...")
+    df_final_merge, df_final_merge_flat = load_summonerstats(dir, df_final_merge, df_final_merge_flat,df_match_participant_info)
 
     print('data loading complete!')
 

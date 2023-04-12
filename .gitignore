@@ -13,3 +13,11 @@ data_merged/
 data_merged.zip
 data_final/
 kd_data/
+data_append/
+data_append_2/
+data_new/
+puuid_match_map.pkl
+summoner_list.pkl
+summoner_puuid_list.pkl
+data_new.zip
+match_id_list_2.pkl

@@ -79,7 +79,7 @@ def get_summoner_names(api_key, high_tiers=['MASTER','GM','CHALLENGER'],lower_ti
 
 # get puuid (global player ID) from summoner names
 def get_riot_puuid(summoner_list, api_key):
-    puuid_list = []
+    puuid_summonerid_mapping = {}
     headers = {
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -97,7 +97,7 @@ def get_riot_puuid(summoner_list, api_key):
             response = requests.get(url, headers=headers)
             # response.raise_for_status()
             res = json.loads(response.content.decode('utf-8'))
-            puuid_list.append(res['puuid'])
+            puuid_summonerid_mapping[res['puuid']] = res['id']
         except:
             continue
         
@@ -107,12 +107,13 @@ def get_riot_puuid(summoner_list, api_key):
         # 1.5 seconds to be safe
         time.sleep(1.2)
 
-    return puuid_list
+    return puuid_summonerid_mapping
 
 # get list of ranked match IDs from list of puuids
 # set maximum number of games to pull from each player
 def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
     match_ids = []
+    puuid_match_map = {}
     headers = {
         "Accept-Language": "en-US,en;q=0.9",
         "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -120,7 +121,7 @@ def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
         "X-Riot-Token": api_key
     }
 
-    for i,puuid in enumerate(puuid_list):
+    for i,puuid in enumerate(puuid_list.keys()):
         # if limit set, return once we hit limit
         if i >= max_players:
             return match_ids
@@ -139,6 +140,7 @@ def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
             # check for empty strings
             res = [x for x in res if len(x) > 0]
             match_ids.extend(res)
+            puuid_match_map[puuid] = res
         except:
             raise
         
@@ -146,7 +148,7 @@ def get_riot_match_ids(puuid_list, api_key, max_players=100, max_games=20):
         # sleep to bypass request limit
         time.sleep(1.2)
 
-    return list(set(match_ids))
+    return list(set(match_ids)), puuid_match_map
 
 
 # helper functions to put timeline json into dataframe format
@@ -215,8 +217,10 @@ def get_match_timeline_data(match_id_list, api_key):
                 event_reframe_all[event_type] = pd.concat([event_reframe_all[event_type], event_df])
             participant_mapping_all = pd.concat([participant_mapping_all,participant_mapping_df])
             
-        except:
-            raise
+        except Exception as e:
+            print(match_id)
+            print(e)
+            continue
 
         # sleep to bypass request limit
         time.sleep(1.2)
@@ -260,12 +264,58 @@ def get_match_data(match_id_list, api_key):
             teams = teams.drop(columns=['bans'])
             teams['matchId'] = match_id
             df_team_info = pd.concat([df_team_info, teams])
-        except:
+        except Exception as e:
+            print(f'{e}: {match_id}')
             continue
 
         time.sleep(1.2)
 
-    return df_participant_info, df_team_info
+    df_summoner_stats = df_participant_info.groupby('puuid').agg({
+        'kills':'sum',
+        'deaths':'sum',
+        'win':'sum',
+        'matchId':'count'
+    }).reset_index().rename(columns={
+        'kills':'total_kills',
+        'deaths':'total_deaths',
+        'win':'num_wins',
+        'matchId':'num_matches'
+    })
+
+    df_summoner_stats['kd_ratio'] = df_summoner_stats['total_kills'] / df_summoner_stats['total_deaths']
+    df_summoner_stats['win_ratio'] = df_summoner_stats['num_wins'] / df_summoner_stats['num_matches']
+
+    return df_participant_info, df_team_info, df_summoner_stats
+
+
+
+# get champion mastery data
+# need encrypted summoner ID
+def get_champ_mastery(summoner_list, api_key):
+    df_champ_mastery = pd.DataFrame()
+    headers = {
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
+        "Origin": "https://developer.riotgames.com",
+        "X-Riot-Token": api_key
+    }
+    for i, summoner in enumerate(summoner_list):
+        if i % 20 == 0:
+            print(f'match {i}/{len(summoner_list)}')
+        url = f'https://na1.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-summoner/{summoner}'
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            res = json.loads(response.content.decode('utf-8'))
+            df_champ_mastery = pd.concat([df_champ_mastery,pd.DataFrame(res)])
+        except:
+            continue
+
+        time.sleep(1.2)
+    
+    return df_champ_mastery
+    
+
 
 # script to download replays from client API
 # NOTE: only works if replay can be downloaded manually from inside client
@@ -304,41 +354,55 @@ if __name__ == '__main__':
     # with open('summoner_list.pkl','wb') as f:
     #     pickle.dump(summoner_list, f)
 
-    # with open('summoner_list.pkl','rb') as f:
-    #     summoner_list = pickle.load(f)
+
+    with open('summoner_list.pkl','rb') as f:
+        summoner_list = pickle.load(f)
+
+    # print(len(summoner_list))
 
     # # shuffle summoner list for now, can change later
     # random.shuffle(summoner_list)
-    # summoner_list = summoner_list[:600]
+    # summoner_list = summoner_list[:3000]
 
     # puuid_list = get_riot_puuid(summoner_list, api_key)
     # with open('summoner_puuid_list.pkl','wb') as f:
     #     pickle.dump(puuid_list, f)
 
-    # with open('summoner_puuid_list.pkl','rb') as f:
-    #     puuid_list = pickle.load(f)
+    with open('summoner_puuid_list.pkl','rb') as f:
+        puuid_list = pickle.load(f)
 
-    # match_id_list = get_riot_match_ids(puuid_list, api_key, max_players=len(puuid_list), max_games=20)
+    # print(type(puuid_list))
+
+    # match_id_list, puuid_match_map = get_riot_match_ids(puuid_list, api_key, max_players=len(puuid_list), max_games=100)
     # with open('match_id_list.pkl','wb') as f:
     #     pickle.dump(match_id_list, f)
+
+    # with open('puuid_match_map.pkl','wb') as f:
+    #     pickle.dump(puuid_match_map, f)
 
     with open('match_id_list.pkl','rb') as f:
         match_id_list = pickle.load(f)
 
-    # print(len(summoner_list))
+    print(len(summoner_list))
     print(len(match_id_list))
 
-    # match_id_list = match_id_list[:5200]
+    match_id_list = match_id_list[:50000]
+
+    # with open('match_id_list_2.pkl','rb') as f:
+    #     match_id_list = pickle.load(f)
+
+    # print(len(match_id_list))
 
     
     # participants_reframe_all, event_reframe_all, participant_mapping_all = get_match_timeline_data(match_id_list, api_key)
     # print(event_reframe_all)
 
-    # write_timeline_data(participants_reframe_all, event_reframe_all, participant_mapping_all, 'data/')
+    # write_timeline_data(participants_reframe_all, event_reframe_all, participant_mapping_all, 'data_append_2/')
 
-    df_participant_info, df_team_info = get_match_data(match_id_list, api_key)
-    df_participant_info.to_pickle('match_participant_info.pkl')
-    df_team_info.to_pickle('match_team_info.pkl')
+    df_participant_info, df_team_info, df_summoner_stats = get_match_data(match_id_list, api_key)
+    df_participant_info.to_pickle('data_append/match_participant_info.pkl')
+    df_team_info.to_pickle('data_append/match_team_info.pkl')
+    df_summoner_stats.to_pickle('data_append/summoner_stats.pkl')
 
     # port = keys['app_port']
     # token = keys['remoting_auth_token']

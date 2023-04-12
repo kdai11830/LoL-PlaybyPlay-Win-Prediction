@@ -1,4 +1,4 @@
 {
-    "data_dir": "data_merged",
-    "output_dir":"data_final"
+    "data_dir": "data_new",
+    "output_dir":"data_final_new"
 }
