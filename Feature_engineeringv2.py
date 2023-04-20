@@ -203,51 +203,11 @@ def feature_engineering(df,position_df,sampleTS):
 
 
 if __name__ == '__main__':
-    #lists = []
-    #for i in range(0,10):
-    #    df = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_final_{i}.pkl')
-    #    lists.append(df)
-    #df = pd.concat(lists)
-    #del lists
-    #df = early_game_filter(df,60000*20,3)
-    ## team 1 and team2
-    #df = df[df['teamIdStr']=='TEAM1']
-    #sampleTS = pd.DataFrame({'sampleTimestamp':list(set(df['sampleTimestamp']))}).sort_values(['sampleTimestamp'])
-    #sampleTS.to_pickle('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//sampleTS.pkl')
-    sampleTS = pd.read_pickle('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//sampleTS.pkl')
-    for i in range(0,10):
-        df = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_final_{i}.pkl')
-        df_flat = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_flat_{i}.pkl')
-        print(f'finish loading data chunk {i}')
-        X,Y,Order = feature_engineering(df,df_flat,sampleTS) 
-        print(f'finish_feature_engineering chunk {i}')
-        print(X.shape)
-        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//X_{i}.npy', 'wb') as f:
-            np.save(f,X)
-        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Y_{i}.npy', 'wb') as f:
-            np.save(f,Y)
-        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Order_{i}.npy', 'wb') as f:
-            np.save(f,Order)   
-        
-        print(f'finished saving chunk {i}')
-    
-    ## Restack the data
-    Xlists = []
-    Ylists = []
-    orderlists = []
-    for i in range(0,10):
-        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//X_{i}.npy', 'rb') as f:
-            Xlists.append(np.load(f))
-        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Y_{i}.npy', 'rb') as f:
-            Ylists.append(np.load(f))  
-        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Order_{i}.npy', 'rb') as f:
-            orderlists.append(np.load(f,allow_pickle=True))  
-    X = np.vstack(Xlists)
-    Y = np.concatenate(Ylists)
-    Order = np.concatenate(orderlists)
-    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//X_final.npy', 'wb') as f:
+    pklfile = 'data_final/df_final_merge.pkl'
+    X,Y = feature_engineering(pklfile) 
+    with open('data_training/X.npy', 'wb') as f:
         np.save(f,X)
-    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Y_final.npy', 'wb') as f:
+    with open('data_training/Y.npy', 'wb') as f:
         np.save(f,Y)
     with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Order_final.npy', 'wb') as f:
         np.save(f,Order)  

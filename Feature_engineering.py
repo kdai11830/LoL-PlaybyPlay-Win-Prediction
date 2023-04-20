@@ -143,10 +143,10 @@ def feature_engineering(pklfile):
     return X,Y
 
 if __name__ == '__main__':
-    pklfile = 'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_merged//data_merged//df_final_merge.pkl'
+    pklfile = 'data_final/df_final_merge.pkl'
     X,Y = feature_engineering(pklfile) 
-    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//X.npy', 'wb') as f:
+    with open('data_training/X.npy', 'wb') as f:
         np.save(f,X)
-    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//Y.npy', 'wb') as f:
+    with open('data_training/Y.npy', 'wb') as f:
         np.save(f,Y)
         

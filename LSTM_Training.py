@@ -64,6 +64,13 @@ def data_preparation(X,Y,batch_sizes):
     test_loader = torch.utils.data.DataLoader(test, batch_size=batch_sizes, shuffle=False)
     return train_loader,test_loader
 
+def test_preparation(X_test, Y_test, batch_sizes):
+    featuresTest = torch.from_numpy(X_test)
+    targetsTest = torch.from_numpy( Y_test).type(torch.LongTensor) 
+    test = TensorDataset(featuresTest,targetsTest)
+    test_loader = torch.utils.data.DataLoader(test, batch_size=batch_sizes, shuffle=False)
+    return test_loader
+
 def model_training(X,Y,model_parameter):
     input_size = model_parameter['input_size']
     hidden_size = model_parameter['hidden_size']
@@ -93,6 +100,7 @@ def model_training(X,Y,model_parameter):
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         for i, (inputs, targets) in enumerate(train_loader):
+            print(inputs)
             inputs = inputs.double().to(device)
             targets = targets.to(device)
             outputs = model(inputs)

@@ -21,3 +21,13 @@ summoner_list.pkl
 summoner_puuid_list.pkl
 data_new.zip
 match_id_list_2.pkl
+models/
+data_training_new/
+data_training/
+aggregate_data/
+_pycache_/
+model_results.csv
+early_classification_model_performance_LSTMNN.pkl
+final_presentation.pptx
+LOL Prediction.pptx
+__pycache__/LSTM_Training.cpython-310.pyc
