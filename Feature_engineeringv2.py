@@ -7,6 +7,8 @@ Feature Engineering version 2 - smarter upgrades.
 import pandas as pd
 import numpy as np
 import warnings
+from sklearn.cluster import KMeans
+
 
 warnings.filterwarnings("ignore")
 
@@ -83,14 +85,37 @@ def standardization(featuredf):
     featuredf = featuredf/featuredf.var()
     featuredf = featuredf.groupby(['matchId'])[list(featuredf.columns)].ffill()
     return featuredf
+
+
+def clustering(positiondf,position,n_clusters=50,random_state= 10):
+    data = positiondf[position]
+    X = np.array(data.values)
+    model = KMeans(n_clusters=n_clusters, random_state=random_state).fit(X)
+    data[(position[0][11:])+'_cluster'] =  model.predict(X)
+    return data[(position[0][11:])+'_cluster'].reset_index()
     
-def feature_engineering(pklfile):
-    df = pd.read_pickle(pklfile)
+def feature_engineering(df,position_df,sampleTS):
     dfearly = early_game_filter(df,60000*20,3)
     ## team 1 and team2
     T1_dfearly = dfearly[dfearly['teamIdStr']=='TEAM1']
     T2_dfearly = dfearly[dfearly['teamIdStr']=='TEAM2']
     
+    ## query mid/jungle/supportposition information and clustering
+    
+    mask1 = position_df['sampleTimestamp'] < 60000*20
+    position_df = position_df[mask1]
+    position_df = position_df.set_index(['matchId','sampleTimestamp']) 
+    
+    ##clusering creation
+    clusterss = clustering(position_df,['position_x_TEAM1_JUNGLE','position_y_TEAM1_JUNGLE'])
+    clusterss = clusterss.merge(clustering(position_df,['position_x_TEAM1_MIDDLE','position_x_TEAM1_MIDDLE']),on =['matchId','sampleTimestamp'],how='left')
+    clusterss  = clusterss.merge(clustering(position_df,['position_x_TEAM1_UTILITY','position_x_TEAM1_UTILITY']),on =['matchId','sampleTimestamp'],how='left')
+    clusterss = clusterss.merge(clustering(position_df,['position_x_TEAM2_JUNGLE','position_y_TEAM2_JUNGLE']),on =['matchId','sampleTimestamp'],how='left')
+    clusterss = clusterss.merge(clustering(position_df,['position_x_TEAM2_MIDDLE','position_x_TEAM2_MIDDLE']),on =['matchId','sampleTimestamp'],how='left')
+    clusterss = clusterss.merge(clustering(position_df,['position_x_TEAM2_UTILITY','position_x_TEAM2_UTILITY']),on =['matchId','sampleTimestamp'],how='left')
+ 
+    
+    ## gold and gold diff handling
     T1_gold = gold_handler(T1_dfearly)
     T2_gold = gold_handler(T2_dfearly)
     gold_diff = T1_gold - T2_gold
@@ -100,6 +125,7 @@ def feature_engineering(pklfile):
         colrename[cn] = cn+'_diff'
     gold_diff.rename(columns = colrename,inplace =True)
     T1_gold = T1_gold.merge(gold_diff,on =['matchId','sampleTimestamp'],how='left')
+    #T1_gold = standardization(T1_gold.reset_index())
     
     ## xp feature engineering
     xp = champ_char_handler(T1_dfearly,'xp').merge(champ_char_handler(T2_dfearly,'xp').reset_index(),on =['matchId','sampleTimestamp'],how='left')
@@ -130,7 +156,7 @@ def feature_engineering(pklfile):
     categorical_feature = categorical_feature_T1.merge(categorical_feature_T2,on =['matchId','sampleTimestamp'],how='left')
     
     ## Creating full timestamp data Frame
-    sampleTS = pd.DataFrame({'sampleTimestamp':list(set(T1_dfearly['sampleTimestamp']))}).sort_values(['sampleTimestamp'])
+    #sampleTS = pd.DataFrame({'sampleTimestamp':list(set(T1_dfearly['sampleTimestamp']))}).sort_values(['sampleTimestamp'])
     matchId = pd.DataFrame({'matchId':list(set(T1_dfearly['matchId']))}).sort_values(['matchId'])
     fullXdf = matchId.merge(sampleTS,how='cross')
     
@@ -151,20 +177,89 @@ def feature_engineering(pklfile):
     gb = Categorical_feature.groupby('matchId')
     Categorical_feature = np.array([gb.get_group(x).to_numpy() for x in gb.groups])
     
+    ## Position_feature - inefficient to recreate position information.. I wonder why is that.
+    #sampleTS = pd.DataFrame({'sampleTimestamp':list(set(T1_dfearly['sampleTimestamp']))}).sort_values(['sampleTimestamp'])
+    matchId = pd.DataFrame({'matchId':list(set(T1_dfearly['matchId']))}).sort_values(['matchId'])
+    fullXdf = matchId.merge(sampleTS,how='cross')
+    
+    Position_feature = fullXdf.merge(clusterss,on =['matchId','sampleTimestamp'],how='left').set_index(['matchId','sampleTimestamp'])
+    Position_feature = Position_feature.groupby(['matchId']).ffill()
+    gb = Position_feature.groupby('matchId')
+    Position_feature = np.array([gb.get_group(x).to_numpy() for x in gb.groups])
+    Position_feature =Position_feature/100
+    
     ## create X variable
-    X = np.dstack((Value_Feature,Categorical_feature)).astype(np.float32)
+    X = np.dstack((Value_Feature,Categorical_feature,Position_feature)).astype(np.float32)
+    ## to be solved... Some X value are nan for some reason.
+    X[np.isnan(X)] = 0
     
     ## create Y variable
     YVariable = fullXdf.reset_index().groupby('matchId').first().reset_index()[['matchId']]
     YVariable = YVariable.merge(T1_dfearly[['matchId','win']].groupby('matchId').first(),on='matchId',how='left')
     Y = np.array(YVariable['win']).astype(np.float32)
-    return X,Y
+    matchorder = np.array(YVariable['matchId'])
+    return X,Y,matchorder
+
+
 
 if __name__ == '__main__':
-    pklfile = 'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_merged//data_merged//df_final_merge.pkl'
-    X,Y = feature_engineering(pklfile) 
-    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//Xv2.npy', 'wb') as f:
+    #lists = []
+    #for i in range(0,10):
+    #    df = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_final_{i}.pkl')
+    #    lists.append(df)
+    #df = pd.concat(lists)
+    #del lists
+    #df = early_game_filter(df,60000*20,3)
+    ## team 1 and team2
+    #df = df[df['teamIdStr']=='TEAM1']
+    #sampleTS = pd.DataFrame({'sampleTimestamp':list(set(df['sampleTimestamp']))}).sort_values(['sampleTimestamp'])
+    #sampleTS.to_pickle('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//sampleTS.pkl')
+    sampleTS = pd.read_pickle('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//sampleTS.pkl')
+    for i in range(0,10):
+        df = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_final_{i}.pkl')
+        df_flat = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_flat_{i}.pkl')
+        print(f'finish loading data chunk {i}')
+        X,Y,Order = feature_engineering(df,df_flat,sampleTS) 
+        print(f'finish_feature_engineering chunk {i}')
+        print(X.shape)
+        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//X_{i}.npy', 'wb') as f:
+            np.save(f,X)
+        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Y_{i}.npy', 'wb') as f:
+            np.save(f,Y)
+        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Order_{i}.npy', 'wb') as f:
+            np.save(f,Order)   
+        
+        print(f'finished saving chunk {i}')
+    
+    ## Restack the data
+    Xlists = []
+    Ylists = []
+    orderlists = []
+    for i in range(0,10):
+        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//X_{i}.npy', 'rb') as f:
+            Xlists.append(np.load(f))
+        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Y_{i}.npy', 'rb') as f:
+            Ylists.append(np.load(f))  
+        with open(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Order_{i}.npy', 'rb') as f:
+            orderlists.append(np.load(f,allow_pickle=True))  
+    X = np.vstack(Xlists)
+    Y = np.concatenate(Ylists)
+    Order = np.concatenate(orderlists)
+    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//X_final.npy', 'wb') as f:
         np.save(f,X)
-    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//Yv2.npy', 'wb') as f:
+    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Y_final.npy', 'wb') as f:
         np.save(f,Y)
+    with open('F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//TrainingData//TrainData2//Order_final.npy', 'wb') as f:
+        np.save(f,Order)  
+    
+    lists = []
+    for i in range(0,10):
+        df = pd.read_pickle(f'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//df_final_merge_final_{i}.pkl')
+        lists.append(df)
+    
+
+    
+    
+    
+    
         

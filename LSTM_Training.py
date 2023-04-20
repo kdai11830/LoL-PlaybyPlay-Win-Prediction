@@ -11,8 +11,25 @@ from torch.utils.data import  TensorDataset
 from sklearn.model_selection import train_test_split
 import pickle
 import json
+from sklearn.metrics import  roc_curve, auc
+import matplotlib.pyplot as plt
 
 # Define LSTM model
+def plot_roc(y_true, y_pred):
+    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    roc_auc = auc(fpr, tpr)
+    plt.figure(figsize=(15, 10))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC)')
+    plt.legend(loc="lower right")
+    plt.show()
+
+
 class LSTMClassifier(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(LSTMClassifier, self).__init__()
@@ -26,6 +43,7 @@ class LSTMClassifier(nn.Module):
         h0 = torch.zeros(1, x.size(0), self.hidden_size).float().to(x.device)
         c0 = torch.zeros(1, x.size(0), self.hidden_size).float().to(x.device)
         out, _ = self.lstm(x.float(), (h0, c0))
+        
         out = self.fc(out[:, -1, :])
         out = self.softmax(out)
         return out
@@ -42,7 +60,7 @@ def data_preparation(X,Y,batch_sizes):
     targetsTest = torch.from_numpy( targets_test).type(torch.LongTensor) 
     train = TensorDataset(featuresTrain,targetsTrain)
     test = TensorDataset(featuresTest,targetsTest)
-    train_loader = torch.utils.data.DataLoader(train, batch_size=batch_sizes, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train, batch_size=batch_sizes, shuffle=False)
     test_loader = torch.utils.data.DataLoader(test, batch_size=batch_sizes, shuffle=False)
     return train_loader,test_loader
 
@@ -118,9 +136,9 @@ if __name__ == '__main__':
     ## Load data and parameter
     with open((dictionary+"LSTM_Training_Parameter.json"), "r") as readfile:
         parameter = json.load(readfile)
-    with open(dictionary+'TrainingData//Xv2.npy', 'rb') as f:
+    with open(dictionary+'TrainingData//TrainData2/X_final.npy', 'rb') as f:
         X = np.load(f)
-    with open(dictionary+'TrainingData//Yv2.npy', 'rb') as f:
+    with open(dictionary+'TrainingData//TrainData2/Y_final.npy', 'rb') as f:
         Y = np.load(f)  
     
     ## model training
@@ -129,9 +147,9 @@ if __name__ == '__main__':
     ## save variable
     with open (dictionary+'//Model_Parameter//LSTMModel//LSTM_Base_Model.pth','wb') as f:
         torch.save(model,f)
-    with open (dictionary+'//Model_Parameter//LSTMModel//test_losses','wb')as tl:
+    with open (dictionary+'//Model_Parameter//LSTMModel//test_losses.pkl','wb')as tl:
         pickle.dump(test_losses, tl)
-    with open (dictionary+'//Model_Parameter//LSTMModel//train_losses','wb')as tl:
+    with open (dictionary+'//Model_Parameter//LSTMModel//train_losses.pkl','wb')as tl:
         pickle.dump(train_losses, tl)
     
     ## print accuracy here.
@@ -140,6 +158,8 @@ if __name__ == '__main__':
     train_loader,test_loader = data_preparation(X,Y,parameter['batch_sizes'])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    y_true = []
+    y_pred = []
     with torch.no_grad():
         for inputs, targets in test_loader:
             inputs = inputs.double().to(device)
@@ -148,8 +168,11 @@ if __name__ == '__main__':
             _, predicted = torch.max(outputs.data, 1)
             total += targets.size(0)
             correct += (predicted == targets).sum().item()
+            
+            y_pred.extend(outputs.detach().numpy()[:, 1])
+            y_true.extend(targets.detach().numpy())
+            
     print(f"Test accuracy: {(100 * correct / total):.2f}%") 
-
     
        
     

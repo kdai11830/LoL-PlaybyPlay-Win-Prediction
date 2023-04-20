@@ -343,14 +343,18 @@ def load_summonerstats(dir, df_final_merge, df_final_merge_flat,df_match_partici
 
 
 
-def load_pipeline(dir):
+def load_pipeline_step1(dir):
     print("loading match data...")
     df_match_participant_info, df_match_info = load_match_data(dir)
 
     print("loading participant stats...")
     df_final_merge, df_final_merge_flat = load_stats(dir, df_match_participant_info)
+    
+    return df_final_merge, df_final_merge_flat,df_match_participant_info,df_match_info
 
+def load_pipeline_step2(dir,df_final_merge, df_final_merge_flat,df_match_participant_info,df_match_info):
     print("loading building kill data...")
+ 
     df_final_merge, df_final_merge_flat = load_building_kill(dir, df_final_merge, df_final_merge_flat, df_match_participant_info)
 
     print("loading champion kill data...")
@@ -375,17 +379,47 @@ def load_pipeline(dir):
 
     return df_final_merge, df_final_merge_flat
 
+def split_dataframe(df, chunk_size = 10000): 
+    chunks = list()
+    num_chunks = len(df) // chunk_size + 1
+    for i in range(num_chunks):
+        chunks.append(df[i*chunk_size:(i+1)*chunk_size])
+    return chunks
+
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 if __name__ == '__main__':
-    with open('config.json','r') as f:
-        cfg = json.load(f)
-    dir = cfg['data_dir']
-    outdir = cfg['output_dir']
+    dir = 'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//data_new//'
+    outdir = 'F:////League of legends Game Prediction//LoL-PlaybyPlay-Win-Prediction//data_new//aggregate_data//'
 
-    df_final_merge, df_final_merge_flat = load_pipeline(dir)
+    df_final_merge, df_final_merge_flat,df_match_participant_info,df_match_info = load_pipeline_step1(dir)
+    unique_game = list(set(df_final_merge['matchId']))
+    unique_game = [unique_game[i:i + 5000] for i in range(0, len(unique_game), 5000)]
+    for i in range(len(unique_game)):
+        game_id = unique_game[i]
+        df_final_merge_i = df_final_merge[df_final_merge['matchId'].isin(game_id)]
+        df_final_merge_i.to_pickle(f'{outdir}/df_final_merge_{i}.pkl')
+        del df_final_merge_i
+        df_final_merge_flat_i = df_final_merge_flat[df_final_merge_flat['matchId'].isin(game_id)]   
+        df_final_merge_flat_i.to_pickle(f'{outdir}/df_final_merge_flat_{i}.pkl')
+        del df_final_merge_flat_i
+        
+    del df_final_merge
+    del df_final_merge_flat
     
-    df_final_merge.to_pickle(f'{outdir}/df_final_merge.pkl')
-    df_final_merge_flat.to_pickle(f'{outdir}/df_final_merge_flat.pkl')
+    for i in range(len(unique_game)):
+        df_final_merge_i = pd.read_pickle(f'{outdir}/df_final_merge_{i}.pkl')
+        df_final_merge_flat_i =  pd.read_pickle(f'{outdir}/df_final_merge_flat_{i}.pkl')
+        df_final_merge, df_final_merge_flatc = load_pipeline_step2(dir,df_final_merge_i, df_final_merge_flat_i,df_match_participant_info,df_match_info)
+        df_final_merge.to_pickle(f'{outdir}/df_final_merge_final_{i}.pkl')
+        df_final_merge_flatc.to_pickle(f'{outdir}/df_final_merge_flat_final_{i}.pkl')
+        del df_final_merge_i
+        del df_final_merge_flat_i
+
+
 
 
 

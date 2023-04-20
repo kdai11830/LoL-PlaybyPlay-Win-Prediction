@@ -1,0 +1,2 @@
+{"static_size":6,"lstm_output_size":35,"lstm_input_size":38,
+ "hidden_size": 400, "num_classes": 2, "learn_rate": 0.015, "batch_sizes": 500, "num_epochs": 100}
